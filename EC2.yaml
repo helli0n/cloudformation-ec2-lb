@@ -1,0 +1,140 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Web server host
+
+# ------------------------------------------------------------------------------
+# Parameters
+# ------------------------------------------------------------------------------
+Parameters:
+  Env:
+    Type: String
+    Description: Environment name to add as suffix to instance name.
+
+  InstanceType:
+    Type: String
+    Description: Instance type.
+    AllowedValues:
+      - t2.micro
+      - t2.small
+    Default: t2.small
+
+  VPC:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID.
+    Default: vpc-12345
+
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets where Host and LB should be deployed.
+    Default: subnet-12345
+
+
+# ------------------------------------------------------------------------------
+# Mappings
+# ------------------------------------------------------------------------------
+Mappings:
+  AMI:
+    us-west-2:
+      # Amazon Linux 2 (amzn2-ami-hvm-2.0.20190313-x86_64-gp2)
+      HVM: ami-061392db613a6357b
+    eu-west-1:
+      # Amazon Linux 2 (amzn2-ami-hvm-2.0.20190313-x86_64-gp2)
+      HVM: ami-07683a44e80cd32c5
+    ap-south-1:
+      # Amazon Linux 2 (amzn2-ami-hvm-2.0.20190313-x86_64-gp2)
+      HVM: ami-0889b8a448de4fc44
+    eu-central-1:
+      # Amazon Linux 2
+      HVM: ami-03c3a7e4263fd998c
+
+# ------------------------------------------------------------------------------
+# Resources
+# ------------------------------------------------------------------------------
+Resources:
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier: !Ref Subnets
+      HealthCheckType: EC2
+      HealthCheckGracePeriod: 900
+      LaunchConfigurationName: !Ref LaunchConfig
+      LoadBalancerNames:
+        - !Ref LoadBalancer
+      DesiredCapacity: 1
+      MaxSize: 1
+      MinSize: 1
+      Tags:
+        - { Key: 'Name', Value: !Sub 'web-server-${Env}', PropagateAtLaunch: true }
+
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to client host
+      VpcId:
+        Ref: VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: webserver
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+#      Scheme: internal
+      Subnets: !Ref Subnets
+      Listeners:
+        - LoadBalancerPort: '80'
+          InstancePort: '80'
+          Protocol: HTTP
+      SecurityGroups:
+        - !Ref InstanceSecurityGroup
+      Tags:
+        - Key: service
+          Value: webserver
+
+  LaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: !FindInMap [AMI, !Ref 'AWS::Region', HVM]
+#      KeyName: ssh-key
+#      IamInstanceProfile: !Ref InstanceProfile
+      AssociatePublicIpAddress: true
+      InstanceMonitoring: false
+      InstanceType: !Ref InstanceType
+      SecurityGroups:
+        - !Ref InstanceSecurityGroup
+      UserData:
+        Fn::Base64:
+          !Sub |
+          #!/bin/bash
+
+          # The bootstrap log can be found at:
+          # /var/log/cloud-init-output.log
+          # /var/log/cloud-init.log
+
+          # The following code will be placed into file on instance and executed:
+          # /var/lib/cloud/instance/scripts/part-001
+
+          # Exit on error, treat unset variables as error and trace commands
+          set -e
+          set -u
+          set -x
+
+          # ------------------------------------------------------------------------------
+          # Common part for Amazon Linux setup on AWS EC2
+          # ------------------------------------------------------------------------------
+
+          # Install latest security updates
+          yum update -y
+          yum install -y httpd.x86_64
+
+          systemctl start httpd.service
+          systemctl enable httpd.service
+          # Set hostname
+          INSTANCE_ID=$(curl -s 169.254.169.254/latest/meta-data/instance-id)
+          HOSTNAME="${Env}-${!INSTANCE_ID#i-}.localdomain"
+          hostname "$HOSTNAME"
+          echo "Hello World from $HOSTNAME" >> /var/www/html/index.html

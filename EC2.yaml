@@ -22,9 +22,14 @@ Parameters:
     Description: VPC ID.
     Default: vpc-12345
 
-  Subnets:
+  PublicSubnets:
     Type: List<AWS::EC2::Subnet::Id>
-    Description: Subnets where Host and LB should be deployed.
+    Description: Subnets where LB should be deployed.
+    Default: subnet-12345
+
+  PrivateSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets where Host should be deployed.
     Default: subnet-12345
 
 
@@ -53,7 +58,7 @@ Resources:
   AutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
-      VPCZoneIdentifier: !Ref Subnets
+      VPCZoneIdentifier: !Ref PrivateSubnets
       HealthCheckType: EC2
       HealthCheckGracePeriod: 900
       LaunchConfigurationName: !Ref LaunchConfig
@@ -84,7 +89,7 @@ Resources:
     Type: AWS::ElasticLoadBalancing::LoadBalancer
     Properties:
 #      Scheme: internal
-      Subnets: !Ref Subnets
+      Subnets: !Ref PublicSubnets
       Listeners:
         - LoadBalancerPort: '80'
           InstancePort: '80'

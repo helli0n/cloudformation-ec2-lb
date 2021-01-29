@@ -22,6 +22,10 @@ Parameters:
     Description: VPC ID.
     Default: vpc-12345
 
+# ------------------------------------------------------------------------------
+# LB and Host should be on the same Az
+# ------------------------------------------------------------------------------
+
   PublicSubnets:
     Type: List<AWS::EC2::Subnet::Id>
     Description: Subnets where LB should be deployed.
@@ -105,8 +109,7 @@ Resources:
     Properties:
       ImageId: !FindInMap [AMI, !Ref 'AWS::Region', HVM]
 #      KeyName: ssh-key
-#      IamInstanceProfile: !Ref InstanceProfile
-      AssociatePublicIpAddress: true
+      AssociatePublicIpAddress: false
       InstanceMonitoring: false
       InstanceType: !Ref InstanceType
       SecurityGroups:
